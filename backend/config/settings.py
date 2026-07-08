@@ -19,6 +19,12 @@ ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
 # ── AI Provider — master key (operator level, never in DB) ────────
 ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
+#NUEVO, TEST, TENER EN CUENTA SI SIRVEN PARA PRODUCCIÓN EN NETLIFY
+ODOO_URL = os.getenv('ODOO_URL', '')
+ODOO_DB = os.getenv('ODOO_DB', '')
+ODOO_USER = os.getenv('ODOO_USER', '')
+ODOO_PASSWORD = os.getenv('ODOO_PASSWORD', '')
+#---------------------------------
 
 INSTALLED_APPS = [
     'django.contrib.admin',
