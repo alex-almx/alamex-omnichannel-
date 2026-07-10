@@ -95,6 +95,10 @@ if _DATABASE_URL:
             'HOST': _u.hostname or '',
             'PORT': str(_u.port or '5432'),
             'CONN_MAX_AGE': int(os.getenv('DB_CONN_MAX_AGE', '60')),
+            # Supabase's transaction pooler (port 6543, PgBouncer transaction mode)
+            # does not support server-side cursors — disable them to avoid errors.
+            'DISABLE_SERVER_SIDE_CURSORS':
+                os.getenv('DB_DISABLE_SERVER_SIDE_CURSORS', 'True') == 'True',
             'OPTIONS': {'sslmode': os.getenv('DB_SSLMODE', 'require')},
         }
     }
@@ -156,6 +160,7 @@ REST_FRAMEWORK = {
         'anon': '2000/day',
         'user': '50000/day',
         'widget_message': '30/min',
+        'widget_poll': '120/min',
     },
 }
 

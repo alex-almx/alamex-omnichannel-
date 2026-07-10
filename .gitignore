@@ -1,0 +1,36 @@
+# ── Secretos / entorno (NUNCA commitear) ─────────────────────────
+.env
+*.env
+!.env.example
+backend/.env
+frontend/.env
+alamex-omnichannel-.env
+
+# ── Python ───────────────────────────────────────────────────────
+venv/
+backend/venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# ── Django ───────────────────────────────────────────────────────
+backend/staticfiles/
+*.sqlite3
+media/
+
+# ── Node / frontend ──────────────────────────────────────────────
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# ── Archivos de prueba locales (no deben ir al repo) ─────────────
+backend/_add_localhost_origin.py
+frontend/public/widget-embed-test.html
+
+# ── SO / editores ────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

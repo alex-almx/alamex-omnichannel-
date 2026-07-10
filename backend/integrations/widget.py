@@ -21,6 +21,10 @@ class WidgetMessageThrottle(AnonRateThrottle):
     scope = 'widget_message'
 
 
+class WidgetPollThrottle(AnonRateThrottle):
+    scope = 'widget_poll'
+
+
 def generate_widget_key() -> str:
     return "web_" + secrets.token_hex(20)
 
@@ -63,6 +67,14 @@ def _get_or_create_widget_contact(channel: Channel, session_id: str, visitor_nam
         contact.name = visitor_name
         contact.save(update_fields=["name"])
     return contact, created
+
+
+def _get_widget_conversation(contact: Contact, channel: Channel) -> Conversation | None:
+    """Latest non-blocked conversation for this visitor — read-only, never creates."""
+    return Conversation.objects.filter(
+        contact=contact,
+        channel=channel,
+    ).exclude(status="blocked").order_by("-updated_at").first()
 
 
 def _get_or_create_widget_conversation(contact: Contact, channel: Channel) -> Conversation:
@@ -198,5 +210,72 @@ class WidgetMessageView(APIView):
         resp = HttpResponse()
         resp["Access-Control-Allow-Origin"] = request.headers.get("Origin", "*")
         resp["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        resp["Access-Control-Allow-Headers"] = "Content-Type"
+        return resp
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class WidgetMessagesView(APIView):
+    """Public — the widget polls this to receive messages produced after it sent
+    its last one: replies typed by a human agent in the Inbox, plus any AI
+    messages generated elsewhere. Read-only; never creates a conversation.
+
+    GET params:
+      session_id  (required) — the server-authoritative session id
+      after       (optional) — return only messages with id greater than this
+    """
+    authentication_classes = []
+    permission_classes = []
+    throttle_classes = [WidgetPollThrottle]
+
+    def get(self, request, widget_key):
+        channel = _get_website_channel(widget_key)
+        if not channel:
+            return Response({"error": "Widget not found"}, status=404)
+
+        origin = request.headers.get("Origin", "")
+        creds = channel.credentials or {}
+        allowed = _normalize_allowed_origins(creds.get("allowed_origins", []))
+        if not _check_origin(origin, allowed):
+            return Response({"error": "Origin not allowed"}, status=403)
+
+        session_id = (request.query_params.get("session_id") or "").strip()
+        try:
+            after = int(request.query_params.get("after") or 0)
+        except (TypeError, ValueError):
+            after = 0
+
+        messages, conversation = [], None
+        if session_id:
+            contact = Contact.objects.filter(
+                external_id=f"{SESSION_ID_PREFIX}{session_id}",
+                channel=channel,
+            ).first()
+            if contact:
+                conversation = _get_widget_conversation(contact, channel)
+
+        if conversation:
+            qs = (conversation.messages
+                  .filter(id__gt=after)
+                  .exclude(role="customer")
+                  .order_by("created_at"))
+            messages = [
+                {"id": m.id, "role": m.role, "content": m.content,
+                 "created_at": m.created_at.isoformat()}
+                for m in qs
+            ]
+
+        resp = Response({
+            "messages":        messages,
+            "conversation_id": conversation.id if conversation else None,
+            "status":          conversation.status if conversation else None,
+        })
+        resp["Access-Control-Allow-Origin"] = origin if origin else "*"
+        return resp
+
+    def options(self, request, widget_key):
+        resp = HttpResponse()
+        resp["Access-Control-Allow-Origin"] = request.headers.get("Origin", "*")
+        resp["Access-Control-Allow-Methods"] = "GET, OPTIONS"
         resp["Access-Control-Allow-Headers"] = "Content-Type"
         return resp

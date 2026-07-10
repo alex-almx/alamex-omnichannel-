@@ -71,6 +71,9 @@ function LiveWidget({ widgetKey, config }) {
   const [nameStep, setNameStep] = useState(!visitorName)
   const endRef = useRef(null)
   const [sessionId, setSessionId] = useState(getStoredSessionId)
+  // Polling cursor: highest DB message id already shown, + a seen-set to dedupe.
+  const lastIdRef = useRef(0)
+  const seenIdsRef = useRef(new Set())
 
   useEffect(() => {
     if (open && messages.length === 0 && !nameStep) {
@@ -79,6 +82,31 @@ function LiveWidget({ widgetKey, config }) {
   }, [open])
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+
+  // Poll for messages produced after our last one — replies from a human agent
+  // in the Inbox (role 'agent') and any AI messages generated elsewhere.
+  useEffect(() => {
+    if (!open || nameStep || !sessionId) return
+    let cancelled = false
+    const poll = async () => {
+      try {
+        const resp = await fetch(
+          `${API_BASE}/integrations/widget/${widgetKey}/messages/` +
+          `?session_id=${encodeURIComponent(sessionId)}&after=${lastIdRef.current}`
+        )
+        if (!resp.ok || cancelled) return
+        const data = await resp.json()
+        const fresh = (data.messages || []).filter(m => !seenIdsRef.current.has(m.id))
+        if (cancelled || !fresh.length) return
+        fresh.forEach(m => seenIdsRef.current.add(m.id))
+        lastIdRef.current = Math.max(lastIdRef.current, ...fresh.map(m => m.id))
+        setMessages(ms => [...ms, ...fresh.map(m => ({ id: `db-${m.id}`, role: m.role, content: m.content }))])
+      } catch { /* transient — next tick retries */ }
+    }
+    poll()
+    const iv = setInterval(poll, 4000)
+    return () => { cancelled = true; clearInterval(iv) }
+  }, [open, nameStep, sessionId, widgetKey])
 
   const confirmName = () => {
     if (!visitorName.trim()) return
@@ -105,6 +133,11 @@ function LiveWidget({ widgetKey, config }) {
       if (data.session_id) {
         storeSessionId(data.session_id)
         setSessionId(data.session_id)
+      }
+      // Advance the poll cursor past the AI reply so polling doesn't re-fetch it.
+      if (data.message_id) {
+        lastIdRef.current = Math.max(lastIdRef.current, data.message_id)
+        seenIdsRef.current.add(data.message_id)
       }
       setMessages(ms => [...ms, { id: Date.now() + 1, role: 'ai', content: data.reply || '...' }])
     } catch {
