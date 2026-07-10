@@ -404,7 +404,9 @@ def _run_agent_scoped(channel, conversation, incoming_text: str) -> tuple:
         return None, False
 
     creds = channel.credentials or {}
-    model = creds.get('ai_model', 'claude-haiku-4-5-20251001')
+    # `.get(key, default)` no aplica el default si la clave existe con valor None,
+    # así que coalescemos explícitamente para tolerar ai_model=null en credentials.
+    model = creds.get('ai_model') or 'claude-haiku-4-5-20251001'
     max_tokens = max(64, min(4096, int(creds.get('ai_max_tokens') or 1024)))
     context_count = max(1, min(50, int(creds.get('ai_context_messages') or 10)))
 
