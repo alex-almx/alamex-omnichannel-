@@ -200,3 +200,68 @@ class WidgetMessageView(APIView):
         resp["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
         resp["Access-Control-Allow-Headers"] = "Content-Type"
         return resp
+
+#Respuestas por humanos
+@method_decorator(csrf_exempt, name="dispatch")
+class WidgetMessagesView(APIView):
+    """Público — devuelve mensajes nuevos (agente/IA) de una sesión desde un id dado.
+    El widget lo consulta periódicamente (polling) para recibir respuestas
+    enviadas por un agente humano desde el inbox."""
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request, widget_key):
+        channel = _get_website_channel(widget_key)
+        if not channel:
+            return Response({"error": "Widget not found"}, status=404)
+
+        origin = request.headers.get("Origin", "")
+        creds = channel.credentials or {}
+        allowed = _normalize_allowed_origins(creds.get("allowed_origins", []))
+        if not _check_origin(origin, allowed):
+            return Response({"error": "Origin not allowed"}, status=403)
+
+        session_id = (request.GET.get("session_id") or "").strip()
+        try:
+            after_id = int(request.GET.get("after_id") or 0)
+        except ValueError:
+            after_id = 0
+
+        resp_data = {"messages": [], "conversation_status": None}
+
+        if session_id:
+            contact = Contact.objects.filter(
+                external_id=f"{SESSION_ID_PREFIX}{session_id}",
+                channel=channel,
+            ).first()
+            if contact:
+                conversation = Conversation.objects.filter(
+                    contact=contact, channel=channel,
+                ).exclude(status="blocked").order_by("-updated_at").first()
+                if conversation:
+                    qs = Message.objects.filter(
+                        conversation=conversation,
+                        id__gt=after_id,
+                        role__in=["agent", "ai"],
+                    ).order_by("id")
+                    resp_data["messages"] = [
+                        {
+                            "id": m.id,
+                            "role": m.role,
+                            "content": m.content,
+                            "created_at": m.created_at.isoformat(),
+                        }
+                        for m in qs
+                    ]
+                    resp_data["conversation_status"] = conversation.status
+
+        resp = Response(resp_data)
+        resp["Access-Control-Allow-Origin"] = origin if origin else "*"
+        return resp
+
+    def options(self, request, widget_key):
+        resp = HttpResponse()
+        resp["Access-Control-Allow-Origin"] = request.headers.get("Origin", "*")
+        resp["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+        resp["Access-Control-Allow-Headers"] = "Content-Type"
+        return resp
