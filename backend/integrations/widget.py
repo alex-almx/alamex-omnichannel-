@@ -159,8 +159,23 @@ class WidgetMessageView(APIView):
 
         contact, _ = _get_or_create_widget_contact(channel, session_id, visitor_name)
         conversation = _get_or_create_widget_conversation(contact, channel)
-        Message.objects.create(conversation=conversation, role="customer", content=text,
+        customer_msg = Message.objects.create(conversation=conversation, role="customer", content=text,
                                organization_id=conversation.organization_id)
+                
+        # Si un agente humano ya tomó el control de esta conversación, no generamos
+        # ninguna respuesta de IA: solo guardamos el mensaje del visitante. La
+        # respuesta real llegará después vía polling (/messages/) cuando el agente conteste.
+        conversation.refresh_from_db(fields=["status", "ai_active"])
+        if conversation.status == "human_takeover" or not conversation.ai_active:
+            resp = Response({
+                "reply": None,
+                "session_id": session_id,
+                "conversation_id": conversation.id,
+                "message_id": customer_msg.id,
+                "handoff": True,
+            })
+            resp["Access-Control-Allow-Origin"] = origin if origin else "*"
+            return resp
 
         # AI agent (configured per channel) or fallback placeholder
         ai_reply, should_handoff = get_ai_response(channel, conversation, text)
@@ -201,7 +216,6 @@ class WidgetMessageView(APIView):
         resp["Access-Control-Allow-Headers"] = "Content-Type"
         return resp
 
-#Respuestas por humanos
 @method_decorator(csrf_exempt, name="dispatch")
 class WidgetMessagesView(APIView):
     """Público — devuelve mensajes nuevos (agente/IA) de una sesión desde un id dado.
