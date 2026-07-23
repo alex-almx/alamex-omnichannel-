@@ -200,20 +200,56 @@ class ConversationViewSet(TenantScopedViewSet, viewsets.ReadOnlyModelViewSet):
     @action(detail=True, methods=['post'], url_path='messages')
     def create_message(self, request, pk=None):
         """Send an agent message from the Inbox. Marks first response for SLA."""
+        import logging
+        from django.utils import timezone
+        logger = logging.getLogger(__name__)
+
         conversation = self.get_object()
         content = (request.data.get('content') or '').strip()
         if not content:
             return Response({'detail': 'content is required'}, status=status.HTTP_400_BAD_REQUEST)
+
         msg = Message.objects.create(
             conversation=conversation,
             role='agent',
             content=content,
             organization=conversation.organization,
         )
+
+        # --- Reenviar el mensaje al canal externo (WhatsApp / Messenger / Instagram) ---
+        # Antes, este endpoint solo guardaba el mensaje en la base de datos
+        # y nunca lo enviaba de vuelta a Meta; por eso no llegaba a Facebook/WhatsApp.
+        channel = conversation.channel
+        contact = conversation.contact
+        send_error = None
+        if channel and contact and contact.external_id:
+            try:
+                if channel.type == 'messenger':
+                    from integrations.services.messenger import send_text as ms_send
+                    ms_send(contact.external_id, content, channel)
+                elif channel.type == 'whatsapp':
+                    from integrations.services.whatsapp import send_text as wa_send
+                    wa_send(contact.external_id, content, channel)
+                elif channel.type == 'instagram':
+                    from integrations.services.instagram import send_text as ig_send
+                    ig_send(contact.external_id, content, channel)
+                msg.delivered_at = timezone.now()
+                msg.save(update_fields=['delivered_at'])
+            except Exception as e:
+                send_error = str(e)
+                logger.error(
+                    "Fallo al enviar mensaje saliente [%s] conversación=%s: %s",
+                    channel.type, conversation.id, e,
+                )
+
         # Replying clears any open SLA alert — the customer is no longer waiting.
         from accounts.models import SLAAlert
         SLAAlert.objects.filter(conversation=conversation, resolved=False).update(resolved=True)
-        return Response(MessageSerializer(msg).data, status=status.HTTP_201_CREATED)
+
+        data = MessageSerializer(msg).data
+        if send_error:
+            data['send_error'] = send_error
+        return Response(data, status=status.HTTP_201_CREATED)
 
 
 class MessageViewSet(TenantScopedViewSet, viewsets.ReadOnlyModelViewSet):

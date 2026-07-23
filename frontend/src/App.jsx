@@ -8,6 +8,7 @@ import api from './services/api'
 import Sidebar from './components/layout/Sidebar'
 import ConfirmDialog from './components/ui/ConfirmDialog'
 import ErrorCenter from './components/ui/ErrorCenter'
+import InvasiveAlert from './components/ui/InvasiveAlert'
 import DevBanner from './components/layout/DevBanner'
 import Login from './features/auth/Login'
 import Overview from './features/overview/Overview'
@@ -25,8 +26,7 @@ import Activate from './features/auth/Activate'
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
 const POLL_MS  = 30_000
 
-// SLA thresholds come from the workspace business rules — never hardcoded.
-const DEFAULT_SLA = { warning: 5, critical: 10, escalate: 15 }
+const DEFAULT_SLA = { warning: 0, critical: 0, escalate: 0 }
 
 function getSlaTier(waitMin, sla = DEFAULT_SLA) {
   if (waitMin < sla.warning)  return 'ok'
@@ -63,7 +63,7 @@ function buildConvTiers(convs, sla = DEFAULT_SLA) {
           urgent:      tier === 'critical' || tier === 'escalated',
           read:        false,
           title:       TIER_TITLES[tier],
-          message:     `${name} lleva ${waitMin} min sin respuesta`,
+          message:     `${name} lleva ${waitMin < 60 ? `${waitMin} min` : `${Math.floor(waitMin/60)}h${waitMin % 60 > 0 ? ` ${waitMin % 60}min` : ''}`} sin respuesta`,
           createdAt:   new Date().toISOString(),
         } : null,
       }
@@ -77,7 +77,6 @@ function useNotificationPoller() {
     let cancelled = false
     let sla = DEFAULT_SLA
 
-    // Load the configured SLA thresholds once (cheap, cached for the session).
     if (!USE_MOCK) {
       api.get('/accounts/workspace/', { meta: { silent: true } })
         .then(({ data }) => {
@@ -87,7 +86,7 @@ function useNotificationPoller() {
             escalate: data.sla_escalate_minutes ?? DEFAULT_SLA.escalate,
           }
         })
-        .catch(() => { /* keep defaults */ })
+        .catch(() => {})
     }
 
     const poll = async () => {
@@ -100,17 +99,22 @@ function useNotificationPoller() {
           convs = data.results ?? data
         }
         if (!cancelled) syncConvTiers(buildConvTiers(convs, sla))
-      } catch { /* ignore — offline or auth error */ }
+      } catch {}
     }
+
+    // Exponer poll globalmente para que el Inbox lo llame al cambiar a modo humano
+    window.__pollNotifications = poll
 
     poll()
     const iv = setInterval(poll, POLL_MS)
-    return () => { cancelled = true; clearInterval(iv) }
+    return () => {
+      cancelled = true
+      clearInterval(iv)
+      delete window.__pollNotifications
+    }
   }, [syncConvTiers])
 }
 
-// Permission required to view each route. Routes not listed are open to
-// any authenticated user.
 const ROUTE_PERM = {
   '/':             'view_all_convs',
   '/inbox':        'view_all_convs',
@@ -122,18 +126,16 @@ const ROUTE_PERM = {
   '/widget-test':  'manage_channels',
 }
 
-// Wraps a route element; redirects to the role's home when not permitted.
 function Guard({ perm, children }) {
   const loaded = useMe(s => s.loaded)
   const can    = useMe(s => s.can)
-  if (!loaded) return null            // wait for perms to avoid a wrong redirect
+  if (!loaded) return null
   if (perm && !can(perm)) {
     return <Navigate to={can('view_all_convs') ? '/' : '/agent'} replace />
   }
   return children
 }
 
-// Operator console is superuser-only.
 function OperatorGuard({ children }) {
   const loaded = useMe(s => s.loaded)
   const isSuperuser = useMe(s => s.isSuperuser)
@@ -151,6 +153,7 @@ function PrivateLayout() {
     <div style={{ display: 'flex', height: '100vh', width: '100%', overflow: 'hidden', background: 'var(--canvas)' }}>
       <ConfirmDialog />
       <ErrorCenter />
+      <InvasiveAlert />
       <Sidebar />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0, minHeight: 0 }}>
         <DevBanner />

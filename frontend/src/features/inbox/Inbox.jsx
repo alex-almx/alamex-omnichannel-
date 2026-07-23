@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useLocation } from 'react-router-dom'
 import { mockConversations, mockMessages } from '../../mocks/conversations'
 import { getConversations, getConversation, sendAgentMessage, toggleAiActive } from '../../services/conversations'
 import api from '../../services/api'
@@ -35,7 +35,14 @@ function formatDate(iso) {
 }
 
 function renderMd(text) {
-  return text
+  // Sanitizar HTML peligroso antes de procesar markdown
+  const safe = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;')
+  return safe
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.*?)\*/g, '<em>$1</em>')
     .replace(/`(.*?)`/g, '<code style="background:rgba(192,155,58,0.12);padding:1px 5px;border-radius:4px;font-size:0.9em">$1</code>')
@@ -455,6 +462,7 @@ function ConfirmDialog({ title, message, confirmLabel, danger, onConfirm, onCanc
 
 export default function Inbox() {
   const [searchParams, setSearchParams] = useSearchParams()
+  const location = useLocation()
   const [conversations, setConversations] = useState([])
   const [selected,      setSelected]      = useState(null)
   const [messages,      setMessages]      = useState([])
@@ -513,6 +521,29 @@ export default function Inbox() {
 
   useEffect(() => { loadConversations() }, [])
 
+  // Escucha navigate('/inbox', { state: { openConv: id } }) desde InvasiveAlert
+  useEffect(() => {
+    const openConv = location.state?.openConv
+    if (!openConv || !conversations.length) return
+    const target = conversations.find(c => String(c.id) === String(openConv))
+    if (target) {
+      setSelected(target)
+      window.history.replaceState({}, '')
+    }
+  }, [location.state, conversations])
+
+  // Escucha cambios en ?conv=ID para navegar al chat correcto sin recargar
+  useEffect(() => {
+    const wantedId = searchParams.get('conv')
+    if (!wantedId) return
+    const target = conversations.find(c => String(c.id) === String(wantedId))
+    if (target) {
+      setSelected(target)
+      setSearchParams({}, { replace: true })
+    }
+  }, [searchParams, conversations])
+
+
   useEffect(() => {
     if (!selected || USE_MOCK) return
     const iv = setInterval(async () => {
@@ -528,26 +559,43 @@ export default function Inbox() {
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
   const handleSend = async () => {
-    const text = newMsg.trim()
-    if (!text || !selected || sendingMsg) return
-    setSendingMsg(true)
-    setNewMsg('')
-    if (textareaRef.current) textareaRef.current.style.height = 'auto'
-    try {
-      const msg = await sendAgentMessage(selected.id, text)
-      setMessages(ms => [...ms, msg])
-    } catch {
-      setNewMsg(text)
-    } finally {
-      setSendingMsg(false)
+      const text = newMsg.trim()
+      if (!text || !selected || sendingMsg) return
+      // Bloquear el envío si el modo IA está activo.
+      // Aplica a cualquier rol (administrador, agente o supervisor).
+      if (selected?.ai_active) {
+        setConfirm({
+          title: 'Modo IA activo',
+          message: 'La IA está respondiendo automáticamente esta conversación. Para poder responder tú, primero debes desactivar el modo IA.',
+          confirmLabel: 'Desactivar modo IA',
+          danger: false,
+          onConfirm: () => { handleToggleAi(selected); setConfirm(null) },
+        })
+        return
+      }
+      setSendingMsg(true)
+      setNewMsg('')
+      if (textareaRef.current) textareaRef.current.style.height = 'auto'
+      try {
+        const msg = await sendAgentMessage(selected.id, text)
+        setMessages(ms => [...ms, msg])
+      } catch {
+        setNewMsg(text)
+      } finally {
+        setSendingMsg(false)
+      }
     }
-  }
 
   const handleToggleAi = async (conv) => {
     try {
       const updated = await toggleAiActive(conv.id, !conv.ai_active)
-      setConversations(cs => cs.map(c => c.id === updated.id ? { ...c, ai_active: updated.ai_active } : c))
-      if (selected?.id === updated.id) setSelected(s => ({ ...s, ai_active: updated.ai_active }))
+      const newStatus = updated.ai_active ? 'active' : 'human_takeover'
+      await updateStatus(conv, newStatus)
+      setConversations(cs => cs.map(c => c.id === updated.id ? { ...c, ai_active: updated.ai_active, status: newStatus } : c))
+      if (selected?.id === updated.id) setSelected(s => ({ ...s, ai_active: updated.ai_active, status: newStatus }))
+      if (!updated.ai_active && window.__pollNotifications) {
+        setTimeout(() => window.__pollNotifications(), 3000)
+      }
     } catch { /* ignore */ }
   }
 
@@ -870,18 +918,7 @@ export default function Inbox() {
                       sub: 'Vuelve a estado activo',
                       action: () => handleConvAction('reopen'),
                     },
-                    selected?.status !== 'human_takeover' ? {
-                      icon: User,
-                      label: 'Pasar a agente humano',
-                      sub: 'Desactiva la IA para esta conv.',
-                      action: () => handleConvAction('human'),
-                      disabled: selected?.status === 'human_takeover',
-                    } : {
-                      icon: Bot,
-                      label: 'Devolver a IA',
-                      sub: 'Reactiva el agente automático',
-                      action: () => handleConvAction('reopen'),
-                    },
+
                     {
                       icon: Download,
                       label: 'Exportar conversación',

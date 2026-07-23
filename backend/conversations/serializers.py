@@ -64,9 +64,16 @@ class MessageSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class ChannelMiniSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Channel
+        fields = ['id', 'name', 'type']
+
+
 class ConversationSerializer(serializers.ModelSerializer):
     messages = MessageSerializer(many=True, read_only=True)
     contact = ContactSerializer(read_only=True)
+    channel = ChannelMiniSerializer(read_only=True)
     assigned_to_name = serializers.SerializerMethodField()
 
     class Meta:

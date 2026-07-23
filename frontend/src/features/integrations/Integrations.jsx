@@ -279,7 +279,9 @@ function ChannelModal({ channel, onSave, onClose }) {
                 color: testResult.ok ? 'var(--jade)' : 'var(--crimson)',
               }}>
               {testResult.ok ? <CheckCircle size={13} /> : <XCircle size={13} />}
-              {testResult.detail}
+              {typeof testResult.detail === 'string'
+                ? testResult.detail
+                : testResult.detail?.error?.message || JSON.stringify(testResult.detail)}
             </div>
           )}
         </div>
