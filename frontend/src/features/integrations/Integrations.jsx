@@ -50,6 +50,8 @@ const CHANNEL_FIELDS = {
     { key: 'instagram_account_id', label: 'Instagram Account ID', placeholder: '17841408067010982', secret: false, help: 'Meta Business settings → Linked accounts, o Graph API' },
     { key: 'meta_app_id',          label: 'Meta App ID',          placeholder: '1028723836244861', secret: false, help: 'Meta → tu App → App settings → Basic' },
     { key: 'access_token',         label: 'Access Token',         placeholder: 'IGAANxxxxx',        secret: true,  help: 'App → Instagram → API setup → Generate token' },
+    { key: 'app_secret', label: 'App Secret', placeholder: 'd032571146...', secret: true, help: 'Meta → tu App → App settings → Basic → App secret' },
+    { key: 'verify_token', label: 'Verify Token', placeholder: 'tu-token-secreto', secret: true, help: 'Palabra clave que tú eliges — la misma que en Meta Webhooks' },
     ...AI_FIELDS,
   ],
   website: [
