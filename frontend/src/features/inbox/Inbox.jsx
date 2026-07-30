@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams, useLocation } from 'react-router-dom'
 import { mockConversations, mockMessages } from '../../mocks/conversations'
-import { getConversations, getConversation, sendAgentMessage, toggleAiActive } from '../../services/conversations'
+import { getConversations, getConversation, sendAgentMessage, toggleAiActive, deleteConversation } from '../../services/conversations'
 import api from '../../services/api'
 import {
   Bot, User, Search, Send, Loader, RefreshCw,
-  Phone, MoreVertical, Sparkles,
+  Phone, MoreVertical, Sparkles, Trash2,
   CheckCircle, Ban, UserX, Download, AlertTriangle,
 } from 'lucide-react'
 
@@ -634,6 +634,20 @@ export default function Inbox() {
         onConfirm: () => { updateStatus(conv, 'blocked'); setConfirm(null) },
       }),
       unblock: () => updateStatus(conv, 'active'),
+      delete: () => setConfirm({
+        title: 'Eliminar chat',
+        message: `¿Deseas eliminar este chat con ${conv.contact?.name ?? 'este contacto'}? Se quitará de tu bandeja de entrada.`,
+        confirmLabel: 'Eliminar',
+        danger: true,
+        onConfirm: async () => {
+          try {
+            await deleteConversation(conv.id)
+            setConversations(cs => cs.filter(c => c.id !== conv.id))
+            setSelected(s => (s?.id === conv.id ? null : s))
+          } catch { /* ignore */ }
+          setConfirm(null)
+        },
+      }),
       export: () => {
         const lines = messages.map(m =>
           `[${m.created_at ?? ''}] ${m.role === 'customer' ? conv.contact?.name ?? 'Cliente' : m.role === 'ai' ? 'IA' : 'Agente'}: ${m.content}`
@@ -938,6 +952,14 @@ export default function Inbox() {
                       label: 'Desbloquear contacto',
                       sub: 'Reactivar comunicación',
                       action: () => handleConvAction('unblock'),
+                    },
+                    'divider',
+                    {
+                      icon: Trash2,
+                      label: 'Eliminar chat',
+                      sub: 'Se quitará de tu bandeja',
+                      action: () => handleConvAction('delete'),
+                      danger: true,
                     },
                   ]}
                 />

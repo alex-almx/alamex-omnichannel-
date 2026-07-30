@@ -25,6 +25,10 @@ export async function toggleAiActive(conversationId, ai_active) {
   return data
 }
 
+export async function deleteConversation(id) {
+  await api.delete(`/conversations/${id}/delete/`)
+}
+
 // ── Agent workspace ─────────────────────────────────────────────────
 export async function getMyConversations() {
   const { data } = await api.get('/conversations/?assigned=me')

@@ -30,7 +30,6 @@ class ChannelViewSet(TenantScopedViewSet, viewsets.ModelViewSet):
         channel = self.get_object()
         creds = channel.credentials or {}
         channel_type = channel.type
-
         try:
             if channel_type == 'whatsapp':
                 phone_id = creds.get('phone_number_id', '')
@@ -44,7 +43,6 @@ class ChannelViewSet(TenantScopedViewSet, viewsets.ModelViewSet):
                 )
                 ok = resp.status_code == 200
                 return Response({'ok': ok, 'detail': resp.json()})
-
             elif channel_type == 'messenger':
                 page_id = creds.get('page_id', '')
                 token = creds.get('page_access_token', '')
@@ -57,7 +55,6 @@ class ChannelViewSet(TenantScopedViewSet, viewsets.ModelViewSet):
                 )
                 ok = resp.status_code == 200
                 return Response({'ok': ok, 'detail': resp.json()})
-
             elif channel_type == 'instagram':
                 account_id = creds.get('instagram_account_id', '')
                 token = creds.get('access_token', '')
@@ -70,9 +67,7 @@ class ChannelViewSet(TenantScopedViewSet, viewsets.ModelViewSet):
                 )
                 ok = resp.status_code == 200
                 return Response({'ok': ok, 'detail': resp.json()})
-
             return Response({'ok': False, 'detail': f'Tipo de canal desconocido: {channel_type}'})
-
         except Exception as e:
             return Response({'ok': False, 'detail': str(e)}, status=status.HTTP_502_BAD_GATEWAY)
 
@@ -92,7 +87,7 @@ class ConversationViewSet(TenantScopedViewSet, viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        qs = super().get_queryset().filter(is_deleted=False)
         params = self.request.query_params
         profile = getattr(self.request.user, 'agent_profile', None)
 
@@ -170,38 +165,55 @@ class ConversationViewSet(TenantScopedViewSet, viewsets.ReadOnlyModelViewSet):
         """An agent takes ownership of an unassigned conversation."""
         from django.utils import timezone
         from accounts.models import SLAAlert
+
         conversation = self.get_object()
         profile = self._acting_agent(request, conversation.organization)
         if not profile:
             return Response({'detail': 'Solo un agente puede tomar conversaciones.'},
                             status=status.HTTP_403_FORBIDDEN)
+
         conversation.assigned_to = profile
         conversation.assigned_at = timezone.now()
         conversation.status = 'human_takeover'
         conversation.ai_active = False
         conversation.save(update_fields=['assigned_to', 'assigned_at', 'status', 'ai_active', 'updated_at'])
+
         SLAAlert.objects.filter(conversation=conversation, resolved=False).update(
             resolved=True, acknowledged=True, acknowledged_by=profile)
+
         return Response(ConversationSerializer(conversation).data)
 
     @action(detail=True, methods=['post'], url_path='release')
     def release(self, request, pk=None):
         """Agent finishes — hand the conversation back to the AI."""
         from accounts.models import SLAAlert
+
         conversation = self.get_object()
         conversation.assigned_to = None
         conversation.assigned_at = None
         conversation.status = 'active'
         conversation.ai_active = True
         conversation.save(update_fields=['assigned_to', 'assigned_at', 'status', 'ai_active', 'updated_at'])
+
         SLAAlert.objects.filter(conversation=conversation, resolved=False).update(resolved=True)
+
         return Response(ConversationSerializer(conversation).data)
+
+    @action(detail=True, methods=['delete'], url_path='delete')
+    def delete_conversation(self, request, pk=None):
+        """Elimina (soft-delete) el chat — desaparece del Inbox pero se
+        conserva en la base de datos para auditoría."""
+        conversation = self.get_object()
+        conversation.is_deleted = True
+        conversation.save(update_fields=['is_deleted', 'updated_at'])
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=['post'], url_path='messages')
     def create_message(self, request, pk=None):
         """Send an agent message from the Inbox. Marks first response for SLA."""
         import logging
         from django.utils import timezone
+
         logger = logging.getLogger(__name__)
 
         conversation = self.get_object()

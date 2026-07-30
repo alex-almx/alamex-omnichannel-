@@ -56,6 +56,7 @@ class Conversation(TenantOwned):
     contact = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name='conversations')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
     ai_active = models.BooleanField(default=True)
+    is_deleted = models.BooleanField(default=False)
     # Human agent currently responsible (set on takeover / reassignment).
     assigned_to = models.ForeignKey(
         'accounts.Agent', on_delete=models.SET_NULL, null=True, blank=True,
