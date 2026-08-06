@@ -251,6 +251,8 @@ class MetaWebhookView(APIView):
         except json.JSONDecodeError:
             return HttpResponse("Bad Request", status=400)
 
+        logger.warning("[Webhook RAW] %s", json.dumps(payload)[:2000])
+
         obj = payload.get("object", "")
         channel_type = OBJECT_TO_CHANNEL_TYPE.get(obj)
 

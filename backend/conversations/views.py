@@ -201,8 +201,16 @@ class ConversationViewSet(TenantScopedViewSet, viewsets.ReadOnlyModelViewSet):
 
     @action(detail=True, methods=['delete'], url_path='delete')
     def delete_conversation(self, request, pk=None):
-        """Elimina (soft-delete) el chat — desaparece del Inbox pero se
-        conserva en la base de datos para auditoría."""
+        """Elimina (soft-delete) el chat — solo administradores.
+        Desaparece del Inbox pero se conserva en la base de datos para
+        auditoría."""
+        profile = getattr(request.user, 'agent_profile', None)
+        is_admin = request.user.is_superuser or (
+            profile is not None and profile.role == profile.ROLE_ADMIN)
+        if not is_admin:
+            return Response(
+                {'detail': 'Solo un administrador puede eliminar chats.'},
+                status=status.HTTP_403_FORBIDDEN)
         conversation = self.get_object()
         conversation.is_deleted = True
         conversation.save(update_fields=['is_deleted', 'updated_at'])

@@ -9,6 +9,7 @@ const ALL_PERMS = {
   view_all_convs:  true,
   reassign:        true,
   view_billing:    true,
+  delete_conversations: true,
   attend_convs:    true,
 }
 

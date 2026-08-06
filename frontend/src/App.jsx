@@ -146,14 +146,18 @@ function OperatorGuard({ children }) {
 function PrivateLayout() {
   useNotificationPoller()
   const loadMe = useMe(s => s.loadMe)
+  const role = useMe(s => s.role)
+  const isSuperuser = useMe(s => s.isSuperuser)
 
   useEffect(() => { loadMe() }, [loadMe])
+
+  const showInvasiveAlerts = !isSuperuser && role !== 'admin'
 
   return (
     <div style={{ display: 'flex', height: '100vh', width: '100%', overflow: 'hidden', background: 'var(--canvas)' }}>
       <ConfirmDialog />
       <ErrorCenter />
-      <InvasiveAlert />
+      {showInvasiveAlerts && <InvasiveAlert />}
       <Sidebar />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0, minHeight: 0 }}>
         <DevBanner />

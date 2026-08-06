@@ -3,6 +3,7 @@ import { useSearchParams, useLocation } from 'react-router-dom'
 import { mockConversations, mockMessages } from '../../mocks/conversations'
 import { getConversations, getConversation, sendAgentMessage, toggleAiActive, deleteConversation } from '../../services/conversations'
 import api from '../../services/api'
+import { useMe } from '../../store/me'
 import {
   Bot, User, Search, Send, Loader, RefreshCw,
   Phone, MoreVertical, Sparkles, Trash2,
@@ -463,6 +464,7 @@ function ConfirmDialog({ title, message, confirmLabel, danger, onConfirm, onCanc
 export default function Inbox() {
   const [searchParams, setSearchParams] = useSearchParams()
   const location = useLocation()
+  const can = useMe(s => s.can)
   const [conversations, setConversations] = useState([])
   const [selected,      setSelected]      = useState(null)
   const [messages,      setMessages]      = useState([])
@@ -953,14 +955,16 @@ export default function Inbox() {
                       sub: 'Reactivar comunicación',
                       action: () => handleConvAction('unblock'),
                     },
-                    'divider',
-                    {
-                      icon: Trash2,
-                      label: 'Eliminar chat',
-                      sub: 'Se quitará de tu bandeja',
-                      action: () => handleConvAction('delete'),
-                      danger: true,
-                    },
+                    ...(can('delete_conversations') ? [
+                      'divider',
+                      {
+                        icon: Trash2,
+                        label: 'Eliminar chat',
+                        sub: 'Se quitará de tu bandeja',
+                        action: () => handleConvAction('delete'),
+                        danger: true,
+                      },
+                    ] : []),
                   ]}
                 />
               )}

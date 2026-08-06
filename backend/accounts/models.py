@@ -240,6 +240,7 @@ class Agent(TenantOwned):
             'view_all_convs':    is_sup,
             'reassign':          is_sup,
             'view_billing':      is_admin,
+            'delete_conversations': is_admin,
             'attend_convs':      True,
         }
 

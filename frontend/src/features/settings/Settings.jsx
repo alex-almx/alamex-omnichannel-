@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { getAccount, updateAccount, topup, getTransactions, getUsageStats } from '../../services/billing'
 import BusinessRules from './BusinessRules'
+import SlaOpenPanel from './SlaOpenPanel'
 
 // ── Model labels ──────────────────────────────────────────────────
 
@@ -181,6 +182,12 @@ export default function Settings() {
   return (
     <PageShell title="Ajustes" subtitle="Reglas de negocio · Proveedor de IA · Créditos">
       <div className="max-w-3xl space-y-8">
+
+        {/* ── CONVERSACIONES SIN ATENDER (visible solo para admin) ── */}
+        <section>
+          <SectionHeader icon={AlertTriangle} label="Conversaciones sin atender" sub="Visibilidad de equipo — no recibes alertas invasivas, pero puedes ver esto aquí" />
+          <SlaOpenPanel />
+        </section>
 
         {/* ── REGLAS DE NEGOCIO (SLA / alertas / anti-spam) ────── */}
         <section>

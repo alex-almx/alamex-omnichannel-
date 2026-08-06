@@ -6,8 +6,3 @@ almenara.arabe.mx {
     encode gzip
     reverse_proxy frontend:80
 }
-
-dev.alam.mx {
-    encode gzip
-    reverse_proxy 172.18.0.1:8069
-}
